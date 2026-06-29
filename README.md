@@ -4,7 +4,7 @@ A real-time 3D interstellar travel simulation rendered in a single HTML file usi
 
 ## Demo
 
-Open `interstellar.html` directly in any modern browser — no build step, no dependencies to install.
+Open [Interstellar Travel](https://tengyanhaiin-star.github.io/Interstellar/) directly in any modern browser — no build step, no dependencies to install.
 
 ## Features
 
