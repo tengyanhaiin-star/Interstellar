@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+    <title>Interstellar</title>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            -webkit-overflow-scrolling: none;
+            overscroll-behavior: none;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+            height: -webkit-fill-available;
+            cursor: grab;
+            touch-action: none;
+        }
+        
+        canvas:active {
+            cursor: grabbing;
+        }
+        
+        .hint {
+            position: absolute;
+            top: 20px;
+            top: calc(20px + env(safe-area-inset-top));
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+            font-size: 14px;
+            pointer-events: none;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="hint"></div>
+    <canvas id="canvas"></canvas>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        
+        // 支持Retina和高分辨率屏幕
+        const pixelRatio = window.devicePixelRatio || 1;
+        
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(pixelRatio); // 设置设备像素比
+        renderer.setClearColor(0x000010, 1); // 深蓝黑色背景
+
+        // 在一个大圆环柱体空间中随机分布粒子
+        const cylinderOuterRadius = 1000; // 外圆半径
+        const cylinderInnerRadius = 10;   // 内圆半径（避免撞到相机）
+        const zMin = -cylinderOuterRadius;  // z轴最小值 = -外圆半径
+        const zMax = cylinderOuterRadius;   // z轴最大值 = 外圆半径
+        
+        // 创建星际粒子系统 - 使用圆形精灵而不是方块
+        const particleCount = Math.floor(Math.pow(cylinderOuterRadius / 20, 3)); // 星球数量 = (外圆半径/20)³
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            
+            // 在整个圆内随机分布（使用平方根确保均匀分布）
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.sqrt(Math.random()) * cylinderOuterRadius;
+            
+            positions[i3] = Math.cos(angle) * radius;      // x
+            positions[i3 + 1] = Math.sin(angle) * radius;  // y
+            positions[i3 + 2] = zMin + Math.random() * (zMax - zMin); // z - 在-1000到1000之间均匀分布
+            
+            // 星星颜色 - 多样化的颜色
+            const colorType = Math.random();
+            if (colorType > 0.85) {
+                // 蓝色星星
+                colors[i3] = 0.6 + Math.random() * 0.4;
+                colors[i3 + 1] = 0.7 + Math.random() * 0.3;
+                colors[i3 + 2] = 1.0;
+            } else if (colorType > 0.7) {
+                // 淡黄色星星
+                colors[i3] = 1.0;
+                colors[i3 + 1] = 0.9 + Math.random() * 0.1;
+                colors[i3 + 2] = 0.7 + Math.random() * 0.3;
+            } else {
+                // 白色星星
+                const brightness = 0.8 + Math.random() * 0.2;
+                colors[i3] = brightness;
+                colors[i3 + 1] = brightness;
+                colors[i3 + 2] = brightness;
+            }
+            
+            // 如果在内圆范围内，设为不可见（颜色设为0）
+            if (radius < cylinderInnerRadius) {
+                colors[i3] = 0;
+                colors[i3 + 1] = 0;
+                colors[i3 + 2] = 0;
+            }
+            
+            // 不同大小的星球（固定范围）
+            sizes[i] = (Math.random() * 18 + 1) / 5;
+        }
+
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        // 创建圆形精灵纹理
+        const canvas2d = document.createElement('canvas');
+        canvas2d.width = 32;
+        canvas2d.height = 32;
+        const ctx = canvas2d.getContext('2d');
+        const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 32, 32);
+        const starTexture = new THREE.CanvasTexture(canvas2d);
+
+        // 创建粒子材质 - 使用纹理让星星变成圆形
+        const particleMaterial = new THREE.PointsMaterial({
+            size: 2.0, // 固定值
+            vertexColors: true,
+            transparent: false, // 设为不透明
+            opacity: 1.0,
+            sizeAttenuation: true, // 开启距离衰减，星球近大远小
+            blending: THREE.AdditiveBlending,
+            map: starTexture,
+            depthWrite: false
+        });
+
+        const particleSystem = new THREE.Points(particles, particleMaterial);
+        scene.add(particleSystem);
+
+        // 相机初始位置（保持固定）
+        camera.position.set(0, 0, 0);
+
+        // 星球移动速度（固定值）
+        let starSpeed = 0.1;
+        
+        // 可见球体半径 = 外圆半径
+        const visibleRadius = cylinderOuterRadius;
+        
+        // 视角控制变量
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let cameraRotation = { x: 0, y: 0 }; // 存储相机旋转角度（俯仰角和偏航角）
+
+        // 鼠标事件监听
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                // 更新旋转角度（灵敏度调整）
+                cameraRotation.y += deltaX * 0.005; // 左右旋转（偏航）
+                cameraRotation.x += deltaY * 0.005; // 上下旋转（俯仰）
+                
+                // 限制俯仰角度，避免翻转
+                cameraRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotation.x));
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // 触摸事件监听（移动端支持）
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                isDragging = true;
+                previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (isDragging && e.touches.length === 1) {
+                const deltaX = e.touches[0].clientX - previousMousePosition.x;
+                const deltaY = e.touches[0].clientY - previousMousePosition.y;
+                
+                cameraRotation.y += deltaX * 0.005;
+                cameraRotation.x += deltaY * 0.005;
+                cameraRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotation.x));
+                
+                previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            isDragging = false;
+            e.preventDefault();
+        }, { passive: false });
+
+        canvas.addEventListener('touchcancel', (e) => {
+            isDragging = false;
+            e.preventDefault();
+        }, { passive: false });
+        
+        // 防止iOS上的双指缩放和其他手势
+        document.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
+        });
+        
+        document.addEventListener('gesturechange', (e) => {
+            e.preventDefault();
+        });
+        
+        document.addEventListener('gestureend', (e) => {
+            e.preventDefault();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // 应用相机旋转
+            camera.rotation.order = 'YXZ'; // 设置旋转顺序，避免万向锁
+            camera.rotation.x = cameraRotation.x;
+            camera.rotation.y = cameraRotation.y;
+            
+            // 轻微旋转增加动感
+            particleSystem.rotation.z += 0.0002;
+            
+            // 获取粒子位置
+            const positions = particles.attributes.position.array;
+            const colors = particles.attributes.color.array;
+            
+            // 星球沿z轴向前移动
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                
+                // 星球向前移动（z轴正方向）
+                positions[i3 + 2] += starSpeed;
+                
+                // 如果星球移动到z=1000，循环回z=-1000
+                if (positions[i3 + 2] > zMax) {
+                    positions[i3 + 2] = zMin;
+                }
+                
+                // 计算星球到相机的距离和位置
+                const x = positions[i3];
+                const y = positions[i3 + 1];
+                const z = positions[i3 + 2];
+                const distance = Math.sqrt(x * x + y * y + z * z);
+                
+                // 计算径向速度（星球相对相机的接近/远离速度）
+                // z > 0 表示星球在相机前方，正在远离（红移）
+                // z < 0 表示星球在相机后方，正在靠近（蓝移）
+                const radialVelocity = starSpeed * (z / distance); // 径向速度分量
+                
+                // 多普勒效应：计算颜色偏移
+                // 正值（远离）-> 红移，负值（靠近）-> 蓝移
+                const maxShift = 0.3; // 最大颜色偏移量
+                const colorShift = Math.max(-maxShift, Math.min(maxShift, radialVelocity / starSpeed));
+                
+                // 获取该星球的基础颜色（使用固定的伪随机数保持一致性）
+                const colorType = (i * 7919) % 1000 / 1000;
+                let baseR, baseG, baseB;
+                
+                if (colorType > 0.85) {
+                    // 蓝色星球
+                    baseR = 0.6 + ((i * 3571) % 1000 / 1000) * 0.4;
+                    baseG = 0.7 + ((i * 2879) % 1000 / 1000) * 0.3;
+                    baseB = 1.0;
+                } else if (colorType > 0.7) {
+                    // 淡黄色星球
+                    baseR = 1.0;
+                    baseG = 0.9 + ((i * 4561) % 1000 / 1000) * 0.1;
+                    baseB = 0.7 + ((i * 5231) % 1000 / 1000) * 0.3;
+                } else {
+                    // 白色星球
+                    const brightness = 0.8 + ((i * 6317) % 1000 / 1000) * 0.2;
+                    baseR = brightness;
+                    baseG = brightness;
+                    baseB = brightness;
+                }
+                
+                // 应用多普勒偏移
+                let r, g, b;
+                if (colorShift > 0) {
+                    // 红移（远离）：增加红色，减少蓝色
+                    r = Math.min(1.0, baseR + colorShift * 0.5);
+                    g = baseG - colorShift * 0.2;
+                    b = Math.max(0.0, baseB - colorShift * 0.8);
+                } else {
+                    // 蓝移（靠近）：增加蓝色，减少红色
+                    const blueShift = Math.abs(colorShift);
+                    r = Math.max(0.0, baseR - blueShift * 0.8);
+                    g = baseG - blueShift * 0.2;
+                    b = Math.min(1.0, baseB + blueShift * 0.5);
+                }
+                
+                // 应用多普勒效应后，还需检查是否在内圆范围内
+                const radiusXY = Math.sqrt(x * x + y * y);
+                
+                // 只有在可见范围内才显示（球体内且不在内圆范围内）
+                if (distance > visibleRadius || radiusXY < cylinderInnerRadius) {
+                    // 超出可见范围或在内圆范围内
+                    colors[i3] = 0;
+                    colors[i3 + 1] = 0;
+                    colors[i3 + 2] = 0;
+                } else if (distance > visibleRadius * 0.9) {
+                    // 在边缘渐隐
+                    const fadeRatio = 1 - (distance - visibleRadius * 0.9) / (visibleRadius * 0.1);
+                    colors[i3] = r * fadeRatio;
+                    colors[i3 + 1] = g * fadeRatio;
+                    colors[i3 + 2] = b * fadeRatio;
+                } else {
+                    // 在可见范围内，应用多普勒偏移后的颜色
+                    colors[i3] = r;
+                    colors[i3 + 1] = g;
+                    colors[i3 + 2] = b;
+                }
+            }
+            
+            particles.attributes.position.needsUpdate = true;
+            particles.attributes.color.needsUpdate = true;
+            
+            renderer.render(scene, camera);
+        }
+
+        animate();
+        
+        // 窗口大小改变时调整渲染器（支持iOS屏幕旋转）
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            camera.aspect = newWidth / newHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(newWidth, newHeight);
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
+        });
+        
+        // iOS特定：处理屏幕方向变化
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                const newWidth = window.innerWidth;
+                const newHeight = window.innerHeight;
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newWidth, newHeight);
+                renderer.setPixelRatio(window.devicePixelRatio || 1);
+            }, 100);
+        });
+    </script>
+</body>
+</html>
