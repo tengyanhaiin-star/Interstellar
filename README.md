@@ -83,4 +83,4 @@ Stars outside a sphere of radius 1000 have their color set to black, effectively
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
